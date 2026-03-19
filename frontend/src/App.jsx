@@ -26,7 +26,7 @@ function MessageItem({ role, content }) {
 }
 
 // 渲染消息列表
-function MessageList({ messages, loading }) {
+function MessageList({ messages }) {
   return (
     <div className="message-list">
       {/* {}代表在JSX中嵌入JS表达式 */}
@@ -45,14 +45,6 @@ function MessageList({ messages, loading }) {
         />
       ))}
 
-      {loading && (
-        <div className="message assistant">
-          <div className="bubble">
-            <strong>Model</strong>
-            <p>Thinking...</p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -97,14 +89,15 @@ export default function App() {
   async function handleSend() {
     const text = input.trim()
     if (!text || loading) return
-
+  
     const userMessage = { role: 'user', content: text }
-
-    setMessages((prev) => [...prev, userMessage]) //连带之前的聊天记录和本次的prompt
+    const assistantMessage = { role: 'assistant', content: '' }
+  
+    setMessages((prev) => [...prev, userMessage, assistantMessage])
     setInput('')
     setError('')
     setLoading(true)
-
+  
     try {
       const res = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
@@ -115,21 +108,48 @@ export default function App() {
           message: text,
         }),
       })
-
+  
       if (!res.ok) {
-        throw new Error('Backend request failed!')
+        throw new Error('后端请求失败')
       }
-
-      const data = await res.json()
-
-      const assistantMessage = {
-        role: 'assistant',
-        content: data.reply || 'No reply',
+  
+      if (!res.body) {
+        throw new Error('当前浏览器不支持流式读取')
       }
-
-      setMessages((prev) => [...prev, assistantMessage]) //生成回答
+  
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText = ''
+  
+      while (true) {
+        const { done, value } = await reader.read()
+  
+        if (done) break
+  
+        const chunk = decoder.decode(value, { stream: true })
+        fullText += chunk
+  
+        setMessages((prev) => {
+          const next = [...prev]
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            content: fullText,
+          }
+          return next
+        })
+      }
     } catch (err) {
-      setError(err.message || 'Request error!')
+      setError(err.message || '请求出错')
+      setMessages((prev) => {
+        const next = [...prev]
+        const last = next[next.length - 1]
+  
+        if (last?.role === 'assistant' && last.content === '') {
+          next.pop()
+        }
+  
+        return next
+      })
     } finally {
       setLoading(false)
     }
@@ -145,7 +165,7 @@ export default function App() {
 
         {error && <div className="error">{error}</div>}
 
-        <MessageList messages={messages} loading={loading} />
+        <MessageList messages={messages} />
 
         <ChatInput
           input={input}

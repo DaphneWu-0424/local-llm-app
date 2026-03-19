@@ -16,6 +16,8 @@ app.get('/', (req, res) => {
 })
 
 app.post('/api/chat', async (req, res) => {
+  // .post是express应用的一个方法，用于监听HTT POST请求
+  // 语法：app.post(path, callback)
     try {
       const { message } = req.body
   
@@ -26,11 +28,11 @@ app.post('/api/chat', async (req, res) => {
       }
   
       const ollamaRes = await fetch('http://localhost:11434/api/chat', {
-        method: 'POST',
-        headers: {
+        method: 'POST', // 用于定制HTTP请求，如果省略，默认发起一个GET
+        headers: { // 用于设置请求头，这里告诉服务器请求体的格式是JSON
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ // BODY是请求的实际数据
           model: 'llama3.1:8b',
           messages: [
             {
@@ -38,7 +40,7 @@ app.post('/api/chat', async (req, res) => {
               content: message,
             },
           ],
-          stream: false,
+          stream: true,
         }),
       })
   
@@ -48,17 +50,63 @@ app.post('/api/chat', async (req, res) => {
           error: `Ollama request failed: ${errorText}`,
         })
       }
+
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.setHeader('Transfer-Encoding', 'chunked')
+
+
+      const reader = ollamaRes.body.getReader() // ollamaRes.body 是一个 ReadableStream，通过 getReader() 获得一个读取器，可以逐块读取数据。
+      const decoder = new TextDecoder()
+      let buffer = ''
   
-      const data = await ollamaRes.json()
+      while (true) {
+        const { done, value } = await reader.read()
   
-      return res.json({
-        reply: data.message?.content || '没有收到模型回复',
-      })
+        if (done) break
+  
+        buffer += decoder.decode(value, { stream: true })
+  
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+  
+        for (const line of lines) {
+          if (!line.trim()) continue
+  
+          try {
+            const json = JSON.parse(line)
+            const chunk = json.message?.content || ''
+  
+            if (chunk) {
+              res.write(chunk)
+            }
+          } catch (err) {
+            console.error('JSON parse error:', err)
+          }
+        }
+      }
+  
+      if (buffer.trim()) {
+        try {
+          const json = JSON.parse(buffer)
+          const chunk = json.message?.content || ''
+          if (chunk) {
+            res.write(chunk)
+          }
+        } catch (err) {
+          console.error('Final buffer parse error:', err)
+        }
+      }
+  
+      res.end()
     } catch (error) {
       console.error('Server error:', error)
-      return res.status(500).json({
-        error: 'Internal server error',
-      })
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Internal server error',
+        })
+      } else {
+        res.end()
+      }
     }
   })
 
