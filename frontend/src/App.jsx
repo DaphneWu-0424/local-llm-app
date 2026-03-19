@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import './App.css'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 // 渲染单条消息
 // React 组件是一个独立、可复用的 UI 片段，它接收输入（称为 props），并返回描述界面的 React 元素。
@@ -9,7 +11,15 @@ function MessageItem({ role, content }) {
     <div className={`message ${role}`}>
       <div className="bubble">
         <strong>{role === 'user' ? 'You' : 'Model'}</strong>
-        <p>{content}</p>
+        {role === 'assistant' ? (
+          <div className="markdown-body">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {content}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p>{content}</p>
+        )}
       </div>
     </div>
   )
