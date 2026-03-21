@@ -19,11 +19,17 @@ app.post('/api/chat', async (req, res) => {
   // .post是express应用的一个方法，用于监听HTT POST请求
   // 语法：app.post(path, callback)
     try {
-      const { message } = req.body
-  
-      if (!message || !message.trim()) {
+      const { model, messages } = req.body
+
+      if (!model || !model.trim()) {
         return res.status(400).json({
-          error: 'message is required',
+          error: 'model is required',
+        })
+      }
+  
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({
+          error: 'messages must be a non-empty array',
         })
       }
   
@@ -33,13 +39,8 @@ app.post('/api/chat', async (req, res) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ // BODY是请求的实际数据
-          model: 'llama3.1:8b',
-          messages: [
-            {
-              role: 'user',
-              content: message,
-            },
-          ],
+          model,
+          messages,
           stream: true,
         }),
       })
@@ -48,6 +49,12 @@ app.post('/api/chat', async (req, res) => {
         const errorText = await ollamaRes.text()
         return res.status(500).json({
           error: `Ollama request failed: ${errorText}`,
+        })
+      }
+
+      if (!ollamaRes.body) {
+        return res.status(500).json({
+          error: 'Ollama response body is empty',
         })
       }
 
